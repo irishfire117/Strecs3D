@@ -61,6 +61,9 @@ public:
     // エッジの総数
     int getEdgeCount() const;
 
+    // ソリッドの総数（アセンブリなら複数）
+    int getSolidCount() const;
+
 private:
     TopoDS_Shape* shape_;
     bool isValid_;

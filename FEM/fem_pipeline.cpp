@@ -346,6 +346,14 @@ std::string runFEMAnalysis(const std::string& config_file, FEMProgressCallback* 
         log(err);
         return "";
     }
+    if (result == STEP2INP_DISCONNECTED_SOLIDS) {
+        std::string err = "Error: The model contains several separate solids (an assembly) that are not "
+                          "connected. The simulation needs a single solid: export only the part you want "
+                          "to print, or combine the bodies into one solid in your CAD program.";
+        std::cerr << err << std::endl;
+        log(err);
+        return "";
+    }
     if (result == STEP2INP_POINT_OFF_FACE) {
         std::string err = "Error: A load's point is not on its selected face. Double-click the face at the "
                           "load position, or correct the point coordinates.";

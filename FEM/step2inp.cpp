@@ -26,9 +26,10 @@ int Step2Inp::convert(const std::string& step_file,
         }
 
         // Generate mesh
-        if (mesh_generator_.generateMesh(step_file) != 0) {
+        int mesh_result = mesh_generator_.generateMesh(step_file);
+        if (mesh_result != 0) {
             gmsh::finalize();
-            return 1;
+            return mesh_result == MESH_DISCONNECTED_SOLIDS ? STEP2INP_DISCONNECTED_SOLIDS : STEP2INP_ERROR;
         }
 
         // Validate surfaces (edge constraints are resolved when writing the node set)

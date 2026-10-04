@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+// generateMesh() return codes besides 0 (success) and 1 (error)
+constexpr int MESH_DISCONNECTED_SOLIDS = 2;  // several solids that share no faces (an assembly)
+
 class MeshGenerator {
 public:
     MeshGenerator();
@@ -39,6 +42,13 @@ private:
     std::vector<RefinementPoint> refinement_points_;
 
     void applyRefinementFields() const;
+
+    // Set the element order, falling back to straight-sided elements if curving them fails
+    void applyHighOrder() const;
+    // Smallest scaled Jacobian over all volume elements (<= 0: inverted element)
+    static double minScaledJacobian();
+    // Number of groups of solids connected through shared faces (1 = a single connected part)
+    static int countConnectedSolids();
 };
 
 #endif // MESH_GENERATOR_H

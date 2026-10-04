@@ -9,6 +9,8 @@
 #include "../processing/VtkProcessor.h"
 #include "../processing/StepToStlConverter.h"
 #include "../processing/StepTransformer.h"
+#include "../processing/StepReader.h"
+#include "../../UI/visualization/VisualizationManager.h"
 #include "../ui/UIState.h"
 #include "../../FEM/SimulationConditionExporter.h"
 #include "../../FEM/fem_pipeline.h"
@@ -83,7 +85,7 @@ bool ApplicationController::openVtkFile(const std::string& vtkFile, IUserInterfa
     }
 }
 
-bool ApplicationController::openStepFile(const std::string& stepFile, IUserInterface* ui)
+bool ApplicationController::openStepFile(const std::string& stepFile, IUserInterface* ui, bool warnIfMultipleSolids)
 {
     if (!ui) return false;
 
@@ -91,6 +93,21 @@ bool ApplicationController::openStepFile(const std::string& stepFile, IUserInter
         // STEPファイルを表示
         ui->displayStepFile(stepFile);
         std::cout << "Successfully loaded STEP file: " << stepFile << std::endl;
+
+        // アセンブリ（複数ソリッド）は解析できないので、境界条件を設定する前に知らせる
+        if (warnIfMultipleSolids) {
+            auto* adapter = dynamic_cast<MainWindowUIAdapter*>(ui);
+            auto* vizManager = adapter ? adapter->getVisualizationManager() : nullptr;
+            auto stepReader = vizManager ? vizManager->getCurrentStepReader() : nullptr;
+            int solids = stepReader ? stepReader->getSolidCount() : 0;
+            if (solids > 1) {
+                ui->showWarningMessage("Multiple solids",
+                    QString("This STEP file contains %1 separate solids (an assembly).\n\n"
+                            "The simulation needs a single solid: separate solids are not connected, so "
+                            "it cannot run. Export only the part you want to print, or combine the "
+                            "bodies into one solid in your CAD program.").arg(solids));
+            }
+        }
 
         // STEPファイルをSTLに変換して保存
         StepToStlConverter converter;
@@ -576,7 +593,7 @@ bool ApplicationController::applyTransformToStep(const gp_Trsf& transform, IUser
     }
 
     // 新しいファイルとして再読み込み（表示更新、STL再生成含む）
-    if (openStepFile(newPath.toStdString(), ui)) {
+    if (openStepFile(newPath.toStdString(), ui, false)) {
         uiState->setStepFilePath(newPath);
         return true;
     }

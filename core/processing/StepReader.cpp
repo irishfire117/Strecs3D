@@ -580,6 +580,13 @@ std::vector<std::array<double, 3>> StepReader::getEdgeSamplePoints(int edgeId, i
     return points;
 }
 
+int StepReader::getSolidCount() const {
+    if (!isValid_) return 0;
+    TopTools_IndexedMapOfShape solidMap;
+    TopExp::MapShapes(*shape_, TopAbs_SOLID, solidMap);
+    return solidMap.Extent();
+}
+
 int StepReader::getEdgeCount() const {
     if (!isValid_) return 0;
     TopTools_IndexedMapOfShape edgeMap;

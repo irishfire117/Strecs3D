@@ -22,7 +22,8 @@ public:
 
     // ファイル操作
     bool openVtkFile(const std::string& vtkFile, IUserInterface* ui);
-    bool openStepFile(const std::string& stepFile, IUserInterface* ui);
+    // warnIfMultipleSolids: warn that the simulation needs a single solid (off when reloading after a reorientation)
+    bool openStepFile(const std::string& stepFile, IUserInterface* ui, bool warnIfMultipleSolids = true);
 
     // STEPファイルから変換されたSTLファイルパスを取得
     QString getConvertedStlPath() const { return convertedStlPath_; }
