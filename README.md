@@ -32,6 +32,7 @@ Strecs3D is a preprocessing software that generates optimized infill for 3D prin
 2. Download according to your OS:
    - **Windows**: `Strecs3D-Windows-Installer.exe`
    - **macOS**: `Strecs3D-macOS.dmg`
+   - **Linux (arch-based)** `see below`:
 
 ### 2. Installation
 
