@@ -1,6 +1,6 @@
 # Strecs3D
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue.svg)](https://github.com/tomohiron907/Strecs3D)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/tomohiron907/Strecs3D)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-CMake-brightgreen.svg)](CMakeLists.txt)
 
@@ -48,6 +48,60 @@ Strecs3D is a preprocessing software that generates optimized infill for 3D prin
 # 2. Drag & drop the Strecs3D application to the Applications folder
 # 3. Launch from Applications
 ```
+
+#### Linux (build from source)
+
+There is no prebuilt Linux release; build it from source. Tested on **Arch Linux**
+(and Arch-based distributions). Other distributions are untested: package names
+differ and some dependencies (the gmsh SDK, lib3mf) may not be packaged.
+
+**1. Install dependencies**
+```bash
+# Official repositories
+sudo pacman -S --needed base-devel git cmake qt6-base vtk opencascade lib3mf \
+    pugixml nlohmann-json gl2ps fast_float eigen utf8cpp
+
+# AUR (gmsh SDK and the CalculiX solver), e.g. with yay
+yay -S gmsh-bin calculix-ccx
+```
+
+**2. Build**
+```bash
+git clone -b linux-port-bc-placement https://github.com/irishfire117/Strecs3D.git
+cd Strecs3D
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+Keep the build directory inside the repository (`-B build`); the build does not
+work from a build directory elsewhere.
+
+**3. Install**
+
+For your user only (no sudo; adds Strecs3D to the application menu):
+```bash
+cmake --install build --prefix ~/.local
+```
+Or system-wide:
+```bash
+sudo cmake --install build
+```
+This installs the `Strecs3D` binary, a desktop entry and icons. You can also run
+`./build/Strecs3D` directly without installing.
+
+**Update**
+```bash
+git pull
+cmake --build build -j"$(nproc)"
+cmake --install build --prefix ~/.local   # same prefix as before
+```
+
+**Uninstall**
+```bash
+xargs rm -v < build/install_manifest.txt   # prefix with sudo for a system-wide install
+```
+
+The FEM simulation runs CalculiX as `ccx` from your `PATH` (`calculix-ccx`
+installs `/usr/bin/ccx`).
 
 ---
 
@@ -109,6 +163,7 @@ Each sample includes STL and VTU files for testing the software.
 |---------|-----------------|
 | Windows | 11 (64bit)      |
 | macOS   | 10.15 or later  |
+| Linux   | Arch Linux (build from source; other distributions untested) |
 
 ### Recommended Environment
 | Item      | Recommended    |

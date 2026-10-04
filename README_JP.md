@@ -1,6 +1,6 @@
 # Strecs3D
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue.svg)](https://github.com/your-username/Strecs3D)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/your-username/Strecs3D)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-CMake-brightgreen.svg)](CMakeLists.txt)
 
@@ -47,6 +47,61 @@ Strecs3Dは、構造解析結果に基づいて3Dプリント用の効率化さ�
 # 2. Strecs3DアプリケーションをApplicationsフォルダにドラッグ&ドロップ
 # 3. Applicationから実行
 ```
+
+#### Linux（ソースからビルド）
+
+Linux 用のビルド済みリリースはないため、ソースからビルドします。**Arch Linux**
+（および Arch ベースのディストリビューション）で動作確認しています。その他の
+ディストリビューションは未確認です（パッケージ名が異なり、gmsh SDK や lib3mf が
+パッケージ化されていない場合があります）。
+
+**1. 依存パッケージのインストール**
+```bash
+# 公式リポジトリ
+sudo pacman -S --needed base-devel git cmake qt6-base vtk opencascade lib3mf \
+    pugixml nlohmann-json gl2ps fast_float eigen utf8cpp
+
+# AUR（gmsh SDK と CalculiX ソルバー）。例: yay
+yay -S gmsh-bin calculix-ccx
+```
+
+**2. ビルド**
+```bash
+git clone -b linux-port-bc-placement https://github.com/irishfire117/Strecs3D.git
+cd Strecs3D
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+ビルドディレクトリはリポジトリ内に置いてください（`-B build`）。他の場所では
+ビルドできません。
+
+**3. インストール**
+
+自分のユーザーのみ（sudo 不要、アプリケーションメニューに追加されます）:
+```bash
+cmake --install build --prefix ~/.local
+```
+システム全体:
+```bash
+sudo cmake --install build
+```
+`Strecs3D` 本体、デスクトップエントリ、アイコンがインストールされます。
+インストールせずに `./build/Strecs3D` を直接実行することもできます。
+
+**更新**
+```bash
+git pull
+cmake --build build -j"$(nproc)"
+cmake --install build --prefix ~/.local   # 以前と同じ prefix
+```
+
+**アンインストール**
+```bash
+xargs rm -v < build/install_manifest.txt   # システム全体の場合は sudo を付ける
+```
+
+FEM 解析では CalculiX を `PATH` 上の `ccx` として実行します（`calculix-ccx` は
+`/usr/bin/ccx` をインストールします）。
 ---
 
 ## 使用方法
@@ -108,6 +163,7 @@ Strecs3Dは、構造解析結果に基づいて3Dプリント用の効率化さ�
 |---|---|
 | Windows | 11 (64bit) |
 | macOS | 10.15以降 |
+| Linux | Arch Linux（ソースからビルド、その他のディストリビューションは未確認） |
 
 ### 必要環境
 | 項目 | 推奨 |
