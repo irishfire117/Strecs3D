@@ -7,6 +7,7 @@
 #include "../../../core/types/BoundaryCondition.h"
 
 class VisualizationManager;
+class PlacementEditor;
 
 class AddConstraintDialog : public QDialog {
     Q_OBJECT
@@ -20,13 +21,19 @@ public:
 
 private slots:
     void onFaceDoubleClicked(int faceId, double nx, double ny, double nz);
+    void onEdgeSelected(int edgeId);
 
 private:
     void setupUI();
     void enableFaceSelectionMode(bool enable);
+    void setEdgeSelecting(bool selecting);
+    void updatePreview();
+    void onPointModeEnabled();
 
     QLineEdit* m_nameEdit;
     QLineEdit* m_surfaceIdEdit;
+    PlacementEditor* m_placementEditor;
+    bool m_isSelectingEdge = false;
     QPushButton* m_okButton;
     QPushButton* m_cancelButton;
 

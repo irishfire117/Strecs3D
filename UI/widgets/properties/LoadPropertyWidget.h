@@ -11,6 +11,7 @@
 #include "../../../core/ui/UIState.h"
 
 class VisualizationManager;
+class PlacementEditor;
 
 class LoadPropertyWidget : public QWidget {
     Q_OBJECT
@@ -40,6 +41,11 @@ private:
     void cancelEdgeSelection();
     void onReverseDirectionToggled(bool checked);
 
+    // Position / direction editor handlers
+    void onDirectionEdited();
+    void onPointModeEnabled();
+    void onNormalRequested();
+
     UIState* m_uiState = nullptr;
     VisualizationManager* m_vizManager = nullptr;
     int m_currentIndex = -1;
@@ -52,7 +58,8 @@ private:
     // Edge selection UI
     QPushButton* m_referenceEdgeButton;
     QLabel* m_selectedEdgeLabel;
-    QLabel* m_directionDisplay;  // Simple numeric display
+    PlacementEditor* m_placementEditor;
+    bool m_clearReferenceEdgeOnPush = false;
     QCheckBox* m_reverseCheckBox;
 
     QPushButton* m_closeButton;

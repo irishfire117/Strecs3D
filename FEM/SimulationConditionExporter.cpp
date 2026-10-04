@@ -35,9 +35,20 @@ bool SimulationConditionExporter::exportToJson(
     // constraints - fixed_faces
     json fixedFacesArray = json::array();
     for (const auto& constraint : boundaryCondition.constraints) {
+        json edgePoints = json::array();
+        for (const auto& p : constraint.edge_points) {
+            edgePoints.push_back({{"x", p.x}, {"y", p.y}, {"z", p.z}});
+        }
+        const char* target = constraint.target == ConstraintTarget::Point ? "point"
+                           : constraint.target == ConstraintTarget::Edge ? "edge" : "face";
         json constraintObj = {
             {"surface_id", constraint.surface_id},
-            {"name", constraint.name}
+            {"name", constraint.name},
+            {"target", target},
+            {"point", {{"x", constraint.point.x}, {"y", constraint.point.y}, {"z", constraint.point.z}}},
+            {"radius", constraint.radius},
+            {"edge_id", constraint.edge_id},
+            {"edge_points", edgePoints}
         };
         fixedFacesArray.push_back(constraintObj);
     }
@@ -54,7 +65,14 @@ bool SimulationConditionExporter::exportToJson(
                 {"x", load.direction.x},
                 {"y", load.direction.y},
                 {"z", load.direction.z}
-            }}
+            }},
+            {"use_point", load.use_point},
+            {"point", {
+                {"x", load.point.x},
+                {"y", load.point.y},
+                {"z", load.point.z}
+            }},
+            {"radius", load.radius}
         };
         appliedLoadsArray.push_back(loadObj);
     }

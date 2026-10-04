@@ -555,6 +555,42 @@ void VisualizationManager::showLoadPreview(int surfaceId, double dirX, double di
     }
 }
 
+void VisualizationManager::showConstraintPreview(const ConstraintCondition& constraint) {
+    clearPreview();
+
+    if (!currentStepReader_ || !currentStepReader_->isValid()) {
+        return;
+    }
+
+    previewActor_ = actorFactory_->createConstraintActor(constraint, currentStepReader_.get());
+
+    if (previewActor_) {
+        registerObject({previewActor_, "__preview_bc__", true, 0.8});
+        sceneRenderer_->addActorToRenderer(previewActor_);
+        render();
+    }
+}
+
+void VisualizationManager::showLoadPreview(const LoadCondition& load) {
+    clearPreview();
+
+    if (!currentStepReader_ || !currentStepReader_->isValid()) {
+        return;
+    }
+
+    previewActor_ = actorFactory_->createLoadActor(load, currentStepReader_.get());
+
+    if (previewActor_) {
+        registerObject({previewActor_, "__preview_bc__", true, 0.8});
+        sceneRenderer_->addActorToRenderer(previewActor_);
+        render();
+    }
+}
+
+bool VisualizationManager::getLastFacePickPosition(double pos[3]) const {
+    return sceneRenderer_->getLastFacePickPosition(pos);
+}
+
 void VisualizationManager::showBedPreview(int surfaceId) {
     // Clear any existing preview
     clearPreview();

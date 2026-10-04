@@ -43,6 +43,12 @@ void SceneRenderer::renderObjects(const std::vector<ObjectInfo>& objectList) {
     render();
 }
 
+bool SceneRenderer::getLastFacePickPosition(double pos[3]) const
+{
+    pos[0] = pos[1] = pos[2] = 0.0;
+    return stepPickerStyle_ && stepPickerStyle_->GetLastDoubleClickPosition(pos);
+}
+
 void SceneRenderer::addActorToRenderer(vtkSmartPointer<vtkActor> actor) {
     if (ui_ && ui_->getRenderer() && actor) {
         ui_->getRenderer()->AddActor(actor);

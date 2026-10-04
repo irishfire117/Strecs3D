@@ -34,6 +34,12 @@ public:
     // ダブルクリック時のコールバックを設定
     void SetOnFaceDoubleClicked(std::function<void(int, const double*)> callback) { onFaceDoubleClicked_ = callback; }
 
+    // World position of the most recent face double-click; false if the click could not be located
+    bool GetLastDoubleClickPosition(double pos[3]) const {
+        pos[0] = lastDoubleClickPos_[0]; pos[1] = lastDoubleClickPos_[1]; pos[2] = lastDoubleClickPos_[2];
+        return lastDoubleClickPosValid_;
+    }
+
     // エッジ選択モードの制御
     void SetEdgeSelectionMode(bool enabled);
     bool IsEdgeSelectionMode() const { return edgeSelectionMode_; }
@@ -64,6 +70,8 @@ private:
     std::vector<vtkSmartPointer<vtkActor>> faceActors_;
     std::vector<vtkSmartPointer<vtkActor>> edgeActors_;
     vtkActor* lastPickedActor_;
+    double lastDoubleClickPos_[3] = {0.0, 0.0, 0.0};
+    bool lastDoubleClickPosValid_ = false;
     vtkRenderer* renderer_;
 
     // 元の色を保存

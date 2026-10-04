@@ -10,6 +10,13 @@
 #include "step2inp/LoadConditionSetter.h"
 #include "step2inp/InpWriter.h"
 
+// convert() / convertStepToInp() return codes
+constexpr int STEP2INP_OK = 0;
+constexpr int STEP2INP_ERROR = 1;
+constexpr int STEP2INP_UNDER_CONSTRAINED = 2;    // constraints only fix one point or one line
+constexpr int STEP2INP_NO_CONSTRAINED_NODES = 3; // a constraint's face/point/edge has no mesh nodes
+constexpr int STEP2INP_POINT_OFF_FACE = 4;       // a patch load's point is not on its face
+
 class Step2Inp {
 public:
     Step2Inp();

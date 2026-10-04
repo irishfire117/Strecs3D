@@ -5,6 +5,7 @@
 #include "../widgets/process/steps/BoundaryConditionStepWidget.h"
 #include "../widgets/process/AddConstraintDialog.h"
 #include "../widgets/process/AddLoadDialog.h"
+#include "../widgets/properties/PlacementEditor.h"
 #include "../../core/commands/state/SetConstraintConditionCommand.h"
 #include "../../core/commands/state/SetLoadConditionCommand.h"
 #include "../../core/commands/state/UpdateConstraintConditionCommand.h"
@@ -108,6 +109,14 @@ void BoundaryConditionController::handleFaceDoubleClicked(int faceId, double nx,
                 ConstraintCondition c = bc.constraints[selection.index];
                 c.surface_id = faceId;
 
+                // Clicked point becomes the constraint point (used for "At point")
+                if (vizManager_) {
+                    double pos[3];
+                    c.point = vizManager_->getLastFacePickPosition(pos)
+                        ? Vector3D{pos[0], pos[1], pos[2]}
+                        : PlacementEditor::pointOnFaceOrCenter(vizManager_->getCurrentStepReader().get(), faceId, c.point);
+                }
+
                 auto command = std::make_unique<UpdateConstraintConditionCommand>(
                     uiState_,
                     selection.index,
@@ -128,6 +137,14 @@ void BoundaryConditionController::handleFaceDoubleClicked(int faceId, double nx,
                 l.surface_id = faceId;
                 l.direction = {-nx, -ny, -nz};
                 l.reference_edge_id = 0;
+
+                // Clicked point becomes the load point (used when the load is a patch)
+                if (vizManager_) {
+                    double pos[3];
+                    l.point = vizManager_->getLastFacePickPosition(pos)
+                        ? Vector3D{pos[0], pos[1], pos[2]}
+                        : PlacementEditor::pointOnFaceOrCenter(vizManager_->getCurrentStepReader().get(), faceId, l.point);
+                }
 
                 auto command = std::make_unique<UpdateLoadConditionCommand>(
                     uiState_,

@@ -212,14 +212,30 @@ std::string runFEMAnalysis(const std::string& config_file, FEMProgressCallback* 
     // Create constraint conditions from config
     std::vector<ConstraintProperties> constraints;
     for (const auto& fixed_face : config.constraints.fixed_faces) {
-        constraints.push_back(createConstraintCondition(fixed_face.surface_id));
+        if (fixed_face.target == "point") {
+            constraints.push_back(createPointConstraintCondition(
+                fixed_face.surface_id, {fixed_face.point.x, fixed_face.point.y, fixed_face.point.z}, fixed_face.radius));
+        } else if (fixed_face.target == "edge") {
+            std::vector<std::array<double, 3>> edge_points;
+            for (const auto& p : fixed_face.edge_points) {
+                edge_points.push_back({p.x, p.y, p.z});
+            }
+            constraints.push_back(createEdgeConstraintCondition(fixed_face.edge_id, edge_points));
+        } else {
+            constraints.push_back(createConstraintCondition(fixed_face.surface_id));
+        }
     }
 
     // Create load conditions from config
     std::vector<LoadProperties> loads;
     for (const auto& load : config.loads.applied_loads) {
         std::vector<double> direction = {load.direction.x, load.direction.y, load.direction.z};
-        loads.push_back(createLoadCondition(load.surface_id, load.magnitude, direction));
+        if (load.use_point) {
+            std::vector<double> point = {load.point.x, load.point.y, load.point.z};
+            loads.push_back(createPatchLoadCondition(load.surface_id, load.magnitude, direction, point, load.radius));
+        } else {
+            loads.push_back(createLoadCondition(load.surface_id, load.magnitude, direction));
+        }
     }
 
     if (constraints.empty() && loads.empty()) {
@@ -315,6 +331,28 @@ std::string runFEMAnalysis(const std::string& config_file, FEMProgressCallback* 
     conversionThread.join();
     int result = conversionResult.load();
 
+    if (result == STEP2INP_UNDER_CONSTRAINED) {
+        std::string err = "Error: The constraints only fix a single point or a single straight line, "
+                          "so the part can rotate about it. Add another constraint (e.g. a second edge, "
+                          "a face, or a point off that line).";
+        std::cerr << err << std::endl;
+        log(err);
+        return "";
+    }
+    if (result == STEP2INP_NO_CONSTRAINED_NODES) {
+        std::string err = "Error: A constraint has no mesh nodes: its edge was not found, or its point is not on "
+                          "the selected face. Check each constraint's face, point and edge.";
+        std::cerr << err << std::endl;
+        log(err);
+        return "";
+    }
+    if (result == STEP2INP_POINT_OFF_FACE) {
+        std::string err = "Error: A load's point is not on its selected face. Double-click the face at the "
+                          "load position, or correct the point coordinates.";
+        std::cerr << err << std::endl;
+        log(err);
+        return "";
+    }
     if (result != 0) {
         std::string err = "Error: STEP to INP conversion failed";
         std::cerr << err << std::endl;

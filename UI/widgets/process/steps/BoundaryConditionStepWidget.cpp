@@ -53,7 +53,7 @@ void BoundaryConditionStepWidget::updateDoneButtonState()
     
     bool hasValidConstraint = false;
     for (const auto& constraint : bc.constraints) {
-        if (constraint.surface_id != 0) {
+        if (constraint.hasTarget()) {
             hasValidConstraint = true;
             break;
         }

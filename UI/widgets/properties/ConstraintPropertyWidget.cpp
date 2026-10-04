@@ -3,6 +3,8 @@
 #include "../../../core/commands/state/UpdateConstraintConditionCommand.h"
 #include "../../../utils/ColorManager.h"
 #include "../../../utils/StyleManager.h"
+#include "../../visualization/VisualizationManager.h"
+#include "PlacementEditor.h"
 #include <QHBoxLayout>
 #include <QSpacerItem>
 #include <QIntValidator>
@@ -15,11 +17,26 @@ ConstraintPropertyWidget::ConstraintPropertyWidget(QWidget* parent)
 
 void ConstraintPropertyWidget::setUIState(UIState* uiState)
 {
+    if (m_uiState) {
+        disconnect(m_uiState, &UIState::boundaryConditionChanged, this, nullptr);
+    }
     m_uiState = uiState;
-    // We don't connect signals here for updates because this widget is transient/dependant on selection.
-    // However, if external change happens, we might want to refresh.
-    // But usually PropertyWidget is refreshed on selection or explicit signal.
-    // For now, simple binding.
+
+    // Refresh when the constraint changes elsewhere (e.g. double-clicking a face in the viewer)
+    if (m_uiState) {
+        connect(m_uiState, &UIState::boundaryConditionChanged, this, [this]() { updateData(); });
+    }
+}
+
+void ConstraintPropertyWidget::setVisualizationManager(VisualizationManager* vizManager)
+{
+    if (m_vizManager) {
+        disconnect(m_vizManager, &VisualizationManager::edgeClicked, this, nullptr);
+    }
+    m_vizManager = vizManager;
+    if (m_vizManager) {
+        connect(m_vizManager, &VisualizationManager::edgeClicked, this, &ConstraintPropertyWidget::onEdgeSelected);
+    }
 }
 
 void ConstraintPropertyWidget::setTarget(int index)
@@ -72,6 +89,17 @@ void ConstraintPropertyWidget::setupUI()
     // Connect to editingFinished for data push (consistent with LoadPropertyWidget)
     connect(m_surfaceIdEdit, &QLineEdit::editingFinished, this, &ConstraintPropertyWidget::pushData);
     layout->addRow(new QLabel("Surface ID:"), m_surfaceIdEdit);
+
+    // Where the constraint applies: whole face, patch at a point, or an edge
+    PlacementEditor::Options options;
+    options.direction = false;
+    options.edge = true;
+    m_placementEditor = new PlacementEditor(this, layout, 100, options);
+    connect(m_placementEditor, &PlacementEditor::changed, this, &ConstraintPropertyWidget::pushData);
+    connect(m_placementEditor, &PlacementEditor::pointModeEnabled, this, &ConstraintPropertyWidget::onPointModeEnabled);
+    connect(m_placementEditor, &PlacementEditor::edgeSelectionRequested, this, [this]() {
+        setEdgeSelecting(!m_isSelectingEdge);
+    });
     
     // Apply label style
     for(int i = 0; i < layout->rowCount(); ++i) {
@@ -125,6 +153,8 @@ void ConstraintPropertyWidget::updateData()
     bool oldBlockedId = m_surfaceIdEdit->blockSignals(true);
     m_surfaceIdEdit->setText(QString::number(c.surface_id));
     m_surfaceIdEdit->blockSignals(oldBlockedId);
+
+    m_placementEditor->setConstraint(c);
 }
 
 void ConstraintPropertyWidget::pushData()
@@ -137,6 +167,10 @@ void ConstraintPropertyWidget::pushData()
     ConstraintCondition c = bc.constraints[m_currentIndex];
     c.name = m_nameEdit->text().toStdString();
     c.surface_id = m_surfaceIdEdit->text().toInt();
+    m_placementEditor->applyTo(c);
+    if (c.target == ConstraintTarget::Edge && m_vizManager) {
+        c.edge_points = PlacementEditor::edgeSamplePoints(m_vizManager->getCurrentStepReader().get(), c.edge_id);
+    }
     
     // Update via UIState
     // Command pattern: Update constraint
@@ -152,6 +186,7 @@ void ConstraintPropertyWidget::setReadOnly(bool readOnly)
 {
     m_nameEdit->setReadOnly(readOnly);
     m_surfaceIdEdit->setReadOnly(readOnly);
+    m_placementEditor->setReadOnly(readOnly);
     m_readOnlyHintLabel->setVisible(readOnly);
 
     QString inputStyle;
@@ -173,8 +208,45 @@ void ConstraintPropertyWidget::setReadOnly(bool readOnly)
     m_surfaceIdEdit->setStyleSheet(inputStyle);
 }
 
+void ConstraintPropertyWidget::onEdgeSelected(int edgeId)
+{
+    if (!m_isSelectingEdge) return;
+    m_placementEditor->setEdge(edgeId);
+    setEdgeSelecting(false);
+    pushData();
+}
+
+void ConstraintPropertyWidget::setEdgeSelecting(bool selecting)
+{
+    m_isSelectingEdge = selecting;
+    m_placementEditor->setEdgeSelecting(selecting);
+    if (m_vizManager) {
+        m_vizManager->setEdgeSelectionMode(selecting);
+        // Constraint editing: back to face selection when done
+        m_vizManager->setFaceSelectionMode(!selecting);
+    }
+}
+
+void ConstraintPropertyWidget::onPointModeEnabled()
+{
+    if (!m_vizManager || !m_uiState || m_currentIndex < 0) return;
+
+    auto bc = m_uiState->getBoundaryCondition();
+    if (m_currentIndex >= (int)bc.constraints.size()) return;
+
+    // Constraints created before point mode existed have no point on the face yet
+    ConstraintCondition c = bc.constraints[m_currentIndex];
+    m_placementEditor->applyTo(c);
+    m_placementEditor->setPoint(PlacementEditor::pointOnFaceOrCenter(
+        m_vizManager->getCurrentStepReader().get(), c.surface_id, c.point));
+}
+
 void ConstraintPropertyWidget::onCloseClicked()
 {
+    if (m_isSelectingEdge) {
+        setEdgeSelecting(false);
+    }
+
     if (m_uiState) {
         m_uiState->setSelectedObject(ObjectType::NONE);
     }

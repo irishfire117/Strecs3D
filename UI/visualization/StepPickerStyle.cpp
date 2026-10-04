@@ -347,6 +347,12 @@ void StepPickerStyle::OnLeftButtonDoubleClick()
         }
 
         if (faceIndex >= 0 && onFaceDoubleClicked_) {
+            // クリック位置で再ピックして正確な位置を取得（荷重点の指定に使用）
+            int* clickPos = this->Interactor->GetEventPosition();
+            picker_->Pick(clickPos[0], clickPos[1], 0, renderer_);
+            lastDoubleClickPosValid_ = picker_->GetActor() == pickedActor;
+            picker_->GetPickPosition(lastDoubleClickPos_);
+
             // 法線の取得には新しいPickが必要な場合があるが、
             // vtkCellPickerは前回のPick結果を保持しているはず
             double normal[3];

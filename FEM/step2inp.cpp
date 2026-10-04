@@ -13,15 +13,27 @@ int Step2Inp::convert(const std::string& step_file,
     gmsh::initialize();
 
     try {
+        // Refine the mesh around point constraints and patch loads so the patch covers several elements
+        for (const auto& constraint : constraints) {
+            if (constraint.kind == ConstraintKind::Point && constraint.radius > 0) {
+                mesh_generator_.addRefinementPoint(constraint.point[0], constraint.point[1], constraint.point[2], constraint.radius);
+            }
+        }
+        for (const auto& load : loads) {
+            if (load.use_point && load.point.size() == 3 && load.radius > 0) {
+                mesh_generator_.addRefinementPoint(load.point[0], load.point[1], load.point[2], load.radius);
+            }
+        }
+
         // Generate mesh
         if (mesh_generator_.generateMesh(step_file) != 0) {
             gmsh::finalize();
             return 1;
         }
 
-        // Validate surfaces
+        // Validate surfaces (edge constraints are resolved when writing the node set)
         for (const auto& constraint : constraints) {
-            if (!mesh_generator_.hasSurface(constraint.surface_number)) {
+            if (constraint.kind != ConstraintKind::Edge && !mesh_generator_.hasSurface(constraint.surface_number)) {
                 std::cerr << "エラー: Surface " << constraint.surface_number << " が見つかりません。" << std::endl;
                 gmsh::finalize();
                 return 1;
@@ -62,9 +74,22 @@ int Step2Inp::convert(const std::string& step_file,
         material_setter_.writeEall(f);
         material_setter_.writeMaterialElementSet(f);
 
-        // Write constraint conditions
-        for (const auto& constraint : constraints) {
-            constraint_setter_.writeConstraintNodeSet(f, constraint.surface_number);
+        // Write constraint conditions (all constraints in one node set)
+        if (!constraints.empty()) {
+            std::vector<std::size_t> constrained_nodes = constraint_setter_.collectConstraintNodes(constraints);
+            if (constrained_nodes.empty()) {
+                std::cerr << "エラー: 拘束された節点がありません。" << std::endl;
+                f.close();
+                gmsh::finalize();
+                return STEP2INP_NO_CONSTRAINED_NODES;
+            }
+            if (ConstraintSetter::nodesAreCollinear(constrained_nodes)) {
+                std::cerr << "エラー: 拘束が1点または1直線上のみです。部品がその周りに回転できるため解析できません。" << std::endl;
+                f.close();
+                gmsh::finalize();
+                return STEP2INP_UNDER_CONSTRAINED;
+            }
+            constraint_setter_.writeConstraintNodeSet(f, constrained_nodes);
         }
 
         // Write material properties
@@ -85,7 +110,11 @@ int Step2Inp::convert(const std::string& step_file,
             std::cout << "Surface " << load.surface_number << " のノード数: " << node_tags.size() << std::endl;
 
             // Use area-based force calculation with values from load condition
-            load_setter_.writeForceBoundaryCondition(f, load.surface_number, load.magnitude, load.direction);
+            if (!load_setter_.writeForceBoundaryCondition(f, load)) {
+                f.close();
+                gmsh::finalize();
+                return STEP2INP_POINT_OFF_FACE;
+            }
             std::cout << "Surface " << load.surface_number << " に寄与面積に基づく力の境界条件を追加しました" << std::endl;
         }
 
@@ -98,6 +127,10 @@ int Step2Inp::convert(const std::string& step_file,
         std::cout << "変換完了（境界条件追加済み): " << step_file << " -> " << inp_file << std::endl;
         std::cout << "適用された境界条件:" << std::endl;
         for (const auto& constraint : constraints) {
+            if (constraint.kind == ConstraintKind::Edge) {
+                std::cout << "  Edge " << constraint.edge_number << ": fixed" << std::endl;
+                continue;
+            }
             std::cout << "  Surface " << constraint.surface_number << ": fixed" << std::endl;
         }
         for (const auto& load : loads) {

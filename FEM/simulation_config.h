@@ -16,15 +16,25 @@ struct MeshConfig {
 };
 
 struct FixedFace {
-    int surface_id;
+    int surface_id = 0;
     std::string name;
+    // "face" (whole face), "point" (face within radius of point) or "edge"
+    std::string target = "face";
+    Vector3D point = {0.0, 0.0, 0.0};
+    double radius = 0.0;
+    int edge_id = 0;
+    std::vector<Vector3D> edge_points;
 };
 
 struct AppliedLoad {
-    int surface_id;
+    int surface_id = 0;
     std::string name;
-    double magnitude;
-    Vector3D direction;
+    double magnitude = 0.0;
+    Vector3D direction = {0.0, 0.0, 0.0};
+    // Optional patch load: distribute over the face within `radius` of `point`
+    bool use_point = false;
+    Vector3D point = {0.0, 0.0, 0.0};
+    double radius = 0.0;
 };
 
 struct ConstraintsConfig {
@@ -47,8 +57,10 @@ struct SimulationConfig {
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vector3D, x, y, z)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MeshConfig, min_element_size, max_element_size)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FixedFace, surface_id, name)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AppliedLoad, surface_id, name, magnitude, direction)
+// WITH_DEFAULT so configs written before target/point/radius/edge existed still load
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(FixedFace, surface_id, name, target, point, radius, edge_id, edge_points)
+// WITH_DEFAULT so configs written before use_point/point/radius existed still load
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AppliedLoad, surface_id, name, magnitude, direction, use_point, point, radius)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ConstraintsConfig, fixed_faces)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LoadsConfig, applied_loads)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SimulationConfig, step_file, mesh, constraints, loads)

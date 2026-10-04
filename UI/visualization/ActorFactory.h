@@ -7,6 +7,8 @@
 #include <utility>
 #include <filesystem>
 #include <optional>
+#include <vtkPolyData.h>
+#include "../../core/types/BoundaryCondition.h"
 
 class VtkProcessor;
 class StepReader;
@@ -122,11 +124,27 @@ public:
         double dirX, double dirY, double dirZ,
         double normalX, double normalY, double normalZ);
 
+    // Constraint actor: cube at the face center, cube + disc at the point, or a tube along the edge
+    vtkSmartPointer<vtkActor> createConstraintActor(
+        const ConstraintCondition& constraint,
+        const StepReader* stepReader);
+
+    // Load actor at the face center, or (patch load) an arrow + disc at load.point
+    vtkSmartPointer<vtkActor> createLoadActor(
+        const LoadCondition& load,
+        const StepReader* stepReader);
+
     vtkSmartPointer<vtkActor> createBedPreviewActor(
         const FaceGeometry& geom);
 
 private:
+    vtkSmartPointer<vtkPolyData> createLoadArrowPolyData(
+        double centerX, double centerY, double centerZ,
+        double dirX, double dirY, double dirZ,
+        double normalX, double normalY, double normalZ);
+
     static constexpr double CONSTRAINT_CUBE_SIZE = 5.0;
+    static constexpr double CONSTRAINT_EDGE_TUBE_RADIUS = 0.8;
     static constexpr double ARROW_CYLINDER_RADIUS = 1.0;
     static constexpr double ARROW_CYLINDER_LENGTH = 20.0;
     static constexpr double ARROW_CONE_RADIUS = 2.0;

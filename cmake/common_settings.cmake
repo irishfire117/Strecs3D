@@ -72,7 +72,7 @@ else()
 endif()
 
 # vcpkgからnlohmann_jsonを検索（FEM用）
-find_package(nlohmann_json 3.2.0 REQUIRED)
+find_package(nlohmann_json 3.11.0 REQUIRED)  # 3.11+: NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT
 if(nlohmann_json_FOUND)
   message(STATUS "nlohmann_json found: ${nlohmann_json_VERSION}")
 else()
@@ -148,6 +148,7 @@ add_executable(Strecs3D
   UI/widgets/properties/StepPropertyWidget.cpp
   UI/widgets/properties/ConstraintPropertyWidget.cpp
   UI/widgets/properties/LoadPropertyWidget.cpp
+  UI/widgets/properties/PlacementEditor.cpp
   UI/widgets/properties/StressDensityCurveWidget.cpp
   UI/widgets/properties/VolumeFractionChartWidget.cpp
   UI/widgets/process/ProcessFlowWidget.cpp

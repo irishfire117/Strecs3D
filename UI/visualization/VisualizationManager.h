@@ -22,6 +22,8 @@ class MainWindowUI;
 class QWidget;
 class StepReader;
 struct BoundaryCondition;
+struct LoadCondition;
+struct ConstraintCondition;
 
 class VisualizationManager : public QObject {
     Q_OBJECT
@@ -76,7 +78,13 @@ public:
 
     // Preview Boundary Conditions (for dialogs)
     void showConstraintPreview(int surfaceId);
+    void showConstraintPreview(const ConstraintCondition& constraint);
     void showLoadPreview(int surfaceId, double dirX, double dirY, double dirZ);
+    // Preview a load including its patch position/radius
+    void showLoadPreview(const LoadCondition& load);
+
+    // World position of the most recent face double-click; false if it could not be located
+    bool getLastFacePickPosition(double pos[3]) const;
     void showBedPreview(int surfaceId);
     void clearPreview();
 

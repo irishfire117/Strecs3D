@@ -4,6 +4,7 @@
 #include "../../../utils/StyleManager.h"
 #include "../../visualization/VisualizationManager.h"
 #include "../../../core/processing/StepReader.h"
+#include "PlacementEditor.h"
 #include <QHBoxLayout>
 #include <QSpacerItem>
 #include <QIntValidator>
@@ -17,7 +18,15 @@ LoadPropertyWidget::LoadPropertyWidget(QWidget* parent)
 
 void LoadPropertyWidget::setUIState(UIState* uiState)
 {
+    if (m_uiState) {
+        disconnect(m_uiState, &UIState::boundaryConditionChanged, this, nullptr);
+    }
     m_uiState = uiState;
+
+    // Refresh when the load changes elsewhere (e.g. double-clicking a face in the viewer)
+    if (m_uiState) {
+        connect(m_uiState, &UIState::boundaryConditionChanged, this, [this]() { updateData(); });
+    }
 }
 
 void LoadPropertyWidget::setTarget(int index)
@@ -100,6 +109,13 @@ void LoadPropertyWidget::setupUI()
 
     layout->addRow(new QLabel("Value:"), valueContainer);
 
+    // Position (whole face / patch) and direction
+    m_placementEditor = new PlacementEditor(this, layout, 100);
+    connect(m_placementEditor, &PlacementEditor::changed, this, &LoadPropertyWidget::pushData);
+    connect(m_placementEditor, &PlacementEditor::directionEdited, this, &LoadPropertyWidget::onDirectionEdited);
+    connect(m_placementEditor, &PlacementEditor::pointModeEnabled, this, &LoadPropertyWidget::onPointModeEnabled);
+    connect(m_placementEditor, &PlacementEditor::normalRequested, this, &LoadPropertyWidget::onNormalRequested);
+
     // Reference Edge Selection
     QString buttonStyle = QString("color: white; background-color: #444; border: 1px solid #666; padding: %1px; border-radius: %2px;")
         .arg(StyleManager::PADDING_MEDIUM)
@@ -131,11 +147,6 @@ void LoadPropertyWidget::setupUI()
     
     layout->addRow(new QLabel("Reverse Direction:"), m_reverseCheckBox);
 
-    // Direction Display (read-only)
-    m_directionDisplay = new QLabel("(0.000, 0.000, 0.000)");
-    m_directionDisplay->setStyleSheet(labelStyle); // Just text style, no border
-    layout->addRow(new QLabel("Direction:"), m_directionDisplay);
-    
     // Apply label style
     for(int i = 0; i < layout->rowCount(); ++i) {
         QLayoutItem* item = layout->itemAt(i, QFormLayout::LabelRole);
@@ -204,12 +215,9 @@ void LoadPropertyWidget::updateData()
         m_selectedEdgeLabel->setText("-");
     }
 
-    // Update direction display
-    m_directionDisplay->setText(QString("(%1, %2, %3)")
-        .arg(l.direction.x, 0, 'f', 3)
-        .arg(l.direction.y, 0, 'f', 3)
-        .arg(l.direction.z, 0, 'f', 3));
-        
+    // Update position / direction fields
+    m_placementEditor->setLoad(l);
+
     // Reset reverse checkbox to false when loading (user can toggle it to flip relative to current)
     bool oldCheckBlock = m_reverseCheckBox->blockSignals(true);
     m_reverseCheckBox->setChecked(false);
@@ -230,9 +238,13 @@ void LoadPropertyWidget::pushData()
     l.surface_id = m_surfaceIdEdit->text().toInt();
     l.magnitude = m_magnitudeEdit->text().toDouble();
 
-    // Note: direction and reference_edge_id are set by updateDirectionFromEdge()
-    // or by face click in MainWindow::onFaceClicked()
-    // We don't modify them here
+    // Position and direction from the editor. reference_edge_id is set by
+    // updateDirectionFromEdge(); a typed direction clears it.
+    m_placementEditor->applyTo(l);
+    if (m_clearReferenceEdgeOnPush) {
+        l.reference_edge_id = 0;
+        m_clearReferenceEdgeOnPush = false;
+    }
 
     // Update via UIState
     // Command pattern: Update load
@@ -267,6 +279,7 @@ void LoadPropertyWidget::setReadOnly(bool readOnly)
     m_magnitudeEdit->setReadOnly(readOnly);
     m_referenceEdgeButton->setEnabled(!readOnly);
     m_reverseCheckBox->setEnabled(!readOnly);
+    m_placementEditor->setReadOnly(readOnly);
     m_readOnlyHintLabel->setVisible(readOnly);
 
     QString inputStyle;
@@ -336,10 +349,7 @@ void LoadPropertyWidget::updateDirectionFromEdge(int edgeId)
 
     // Update UI
     m_selectedEdgeLabel->setText(QString("Edge %1").arg(edgeId));
-    m_directionDisplay->setText(QString("(%1, %2, %3)")
-        .arg(edgeGeom.dirX, 0, 'f', 3)
-        .arg(edgeGeom.dirY, 0, 'f', 3)
-        .arg(edgeGeom.dirZ, 0, 'f', 3));
+    m_placementEditor->setDirection({edgeGeom.dirX, edgeGeom.dirY, edgeGeom.dirZ});
 
     // Update data model
     if (m_currentIndex < 0) return;
@@ -419,4 +429,43 @@ void LoadPropertyWidget::onReverseDirectionToggled(bool checked)
     // which might call setTarget again.
     // If setTarget is called, updateData is called, which resets checkbox to false.
     // This is desired: we flipped it, now the new state is "Force", and if we check it again, it flips again.
+}
+
+void LoadPropertyWidget::onDirectionEdited()
+{
+    // A typed direction is no longer tied to the reference edge; pushData() follows via changed()
+    m_clearReferenceEdgeOnPush = true;
+    m_selectedEdgeLabel->setText("-");
+}
+
+void LoadPropertyWidget::onPointModeEnabled()
+{
+    if (!m_vizManager || !m_uiState || m_currentIndex < 0) return;
+
+    auto bc = m_uiState->getBoundaryCondition();
+    if (m_currentIndex >= (int)bc.loads.size()) return;
+
+    // Loads created before patch mode existed have no point on the face yet
+    LoadCondition l = bc.loads[m_currentIndex];
+    m_placementEditor->applyTo(l);
+    m_placementEditor->setPoint(PlacementEditor::pointOnFaceOrCenter(
+        m_vizManager->getCurrentStepReader().get(), l.surface_id, l.point));
+}
+
+void LoadPropertyWidget::onNormalRequested()
+{
+    if (!m_vizManager || !m_uiState || m_currentIndex < 0) return;
+
+    auto bc = m_uiState->getBoundaryCondition();
+    if (m_currentIndex >= (int)bc.loads.size()) return;
+
+    LoadCondition l = bc.loads[m_currentIndex];
+    m_placementEditor->applyTo(l);
+    Vector3D normal;
+    if (!PlacementEditor::inwardNormal(m_vizManager->getCurrentStepReader().get(), l, normal)) {
+        return;
+    }
+    m_placementEditor->setDirection(normal);
+    onDirectionEdited();
+    pushData();
 }

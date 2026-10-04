@@ -17,6 +17,9 @@
 #include <vtkTransform.h>
 #include <vtkTransformPolyDataFilter.h>
 #include <vtkAppendPolyData.h>
+#include <vtkRegularPolygonSource.h>
+#include <vtkPolyLine.h>
+#include <vtkTubeFilter.h>
 #include <vtkMath.h>
 #include <QColor>
 #include <regex>
@@ -395,13 +398,7 @@ ActorFactory::BoundaryConditionActors ActorFactory::createBoundaryConditionActor
 
     // Constraint Visualization
     for (const auto& constraint : condition.constraints) {
-        FaceGeometry geom = stepReader->getFaceGeometry(constraint.surface_id);
-
-        if (!geom.isValid) {
-            continue;
-        }
-
-        auto actor = createConstraintActor(geom.centerX, geom.centerY, geom.centerZ);
+        auto actor = createConstraintActor(constraint, stepReader);
         if (actor) {
             result.constraintActors.push_back(actor);
         }
@@ -409,17 +406,7 @@ ActorFactory::BoundaryConditionActors ActorFactory::createBoundaryConditionActor
 
     // Load Visualization
     for (const auto& load : condition.loads) {
-        FaceGeometry geom = stepReader->getFaceGeometry(load.surface_id);
-
-        if (!geom.isValid) {
-            continue;
-        }
-
-        auto actor = createLoadArrowActor(
-            geom.centerX, geom.centerY, geom.centerZ,
-            load.direction.x, load.direction.y, load.direction.z,
-            geom.normalX, geom.normalY, geom.normalZ
-        );
+        auto actor = createLoadActor(load, stepReader);
 
         if (actor) {
             result.loadActors.push_back(actor);
@@ -451,7 +438,186 @@ vtkSmartPointer<vtkActor> ActorFactory::createConstraintActor(
     return actor;
 }
 
+vtkSmartPointer<vtkActor> ActorFactory::createConstraintActor(
+    const ConstraintCondition& constraint,
+    const StepReader* stepReader)
+{
+    if (!stepReader) {
+        return nullptr;
+    }
+
+    vtkSmartPointer<vtkAppendPolyData> append = vtkSmartPointer<vtkAppendPolyData>::New();
+    auto addCube = [&append](double x, double y, double z) {
+        vtkSmartPointer<vtkCubeSource> cube = vtkSmartPointer<vtkCubeSource>::New();
+        cube->SetXLength(CONSTRAINT_CUBE_SIZE);
+        cube->SetYLength(CONSTRAINT_CUBE_SIZE);
+        cube->SetZLength(CONSTRAINT_CUBE_SIZE);
+        cube->SetCenter(x, y, z);
+        cube->Update();
+        append->AddInputData(cube->GetOutput());
+    };
+
+    switch (constraint.target) {
+    case ConstraintTarget::Face: {
+        FaceGeometry geom = stepReader->getFaceGeometry(constraint.surface_id);
+        if (!geom.isValid) return nullptr;
+        addCube(geom.centerX, geom.centerY, geom.centerZ);
+        break;
+    }
+    case ConstraintTarget::Point: {
+        FaceGeometry geom = stepReader->getFaceGeometryAtPoint(
+            constraint.surface_id, constraint.point.x, constraint.point.y, constraint.point.z);
+        if (!geom.isValid) return nullptr;
+        addCube(geom.centerX, geom.centerY, geom.centerZ);
+
+        // Disc slightly above the face to avoid z-fighting
+        const double offset = 0.05;
+        vtkSmartPointer<vtkRegularPolygonSource> disc = vtkSmartPointer<vtkRegularPolygonSource>::New();
+        disc->SetNumberOfSides(48);
+        disc->SetRadius(std::max(constraint.radius, 0.1));
+        disc->SetCenter(geom.centerX + geom.normalX * offset,
+                        geom.centerY + geom.normalY * offset,
+                        geom.centerZ + geom.normalZ * offset);
+        disc->SetNormal(geom.normalX, geom.normalY, geom.normalZ);
+        disc->GeneratePolygonOn();
+        disc->Update();
+        append->AddInputData(disc->GetOutput());
+        break;
+    }
+    case ConstraintTarget::Edge: {
+        auto samples = stepReader->getEdgeSamplePoints(constraint.edge_id, 64);
+        if (samples.empty()) return nullptr;
+
+        vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+        vtkSmartPointer<vtkPolyLine> line = vtkSmartPointer<vtkPolyLine>::New();
+        line->GetPointIds()->SetNumberOfIds(samples.size());
+        for (size_t i = 0; i < samples.size(); ++i) {
+            points->InsertNextPoint(samples[i][0], samples[i][1], samples[i][2]);
+            line->GetPointIds()->SetId(i, i);
+        }
+        vtkSmartPointer<vtkCellArray> cells = vtkSmartPointer<vtkCellArray>::New();
+        cells->InsertNextCell(line);
+        vtkSmartPointer<vtkPolyData> polyLine = vtkSmartPointer<vtkPolyData>::New();
+        polyLine->SetPoints(points);
+        polyLine->SetLines(cells);
+
+        vtkSmartPointer<vtkTubeFilter> tube = vtkSmartPointer<vtkTubeFilter>::New();
+        tube->SetInputData(polyLine);
+        tube->SetRadius(CONSTRAINT_EDGE_TUBE_RADIUS);
+        tube->SetNumberOfSides(12);
+        tube->CappingOn();
+        tube->Update();
+        append->AddInputData(tube->GetOutput());
+        break;
+    }
+    }
+
+    append->Update();
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(append->GetOutputPort());
+
+    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+
+    // Green color for constraints
+    actor->GetProperty()->SetColor(0.0, 1.0, 0.0);
+    actor->GetProperty()->SetOpacity(0.8);
+
+    return actor;
+}
+
 vtkSmartPointer<vtkActor> ActorFactory::createLoadArrowActor(
+    double centerX, double centerY, double centerZ,
+    double dirX, double dirY, double dirZ,
+    double normalX, double normalY, double normalZ)
+{
+    vtkSmartPointer<vtkPolyData> arrow = createLoadArrowPolyData(
+        centerX, centerY, centerZ, dirX, dirY, dirZ, normalX, normalY, normalZ);
+    if (!arrow) {
+        return nullptr;
+    }
+
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(arrow);
+
+    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+
+    // Red color for loads
+    actor->GetProperty()->SetColor(1.0, 0.0, 0.0);
+    actor->GetProperty()->SetOpacity(0.8);
+
+    return actor;
+}
+
+vtkSmartPointer<vtkActor> ActorFactory::createLoadActor(
+    const LoadCondition& load,
+    const StepReader* stepReader)
+{
+    if (!stepReader) {
+        return nullptr;
+    }
+
+    if (!load.use_point) {
+        FaceGeometry geom = stepReader->getFaceGeometry(load.surface_id);
+        if (!geom.isValid) {
+            return nullptr;
+        }
+        return createLoadArrowActor(
+            geom.centerX, geom.centerY, geom.centerZ,
+            load.direction.x, load.direction.y, load.direction.z,
+            geom.normalX, geom.normalY, geom.normalZ);
+    }
+
+    // Patch load: arrow at the point (projected onto the face) plus a disc showing the radius
+    FaceGeometry geom = stepReader->getFaceGeometryAtPoint(
+        load.surface_id, load.point.x, load.point.y, load.point.z);
+    if (!geom.isValid) {
+        geom = stepReader->getFaceGeometry(load.surface_id);
+        if (!geom.isValid) {
+            return nullptr;
+        }
+        geom.centerX = load.point.x;
+        geom.centerY = load.point.y;
+        geom.centerZ = load.point.z;
+    }
+
+    vtkSmartPointer<vtkPolyData> arrow = createLoadArrowPolyData(
+        geom.centerX, geom.centerY, geom.centerZ,
+        load.direction.x, load.direction.y, load.direction.z,
+        geom.normalX, geom.normalY, geom.normalZ);
+    if (!arrow) {
+        return nullptr;
+    }
+
+    // Disc slightly above the face to avoid z-fighting
+    const double offset = 0.05;
+    vtkSmartPointer<vtkRegularPolygonSource> disc = vtkSmartPointer<vtkRegularPolygonSource>::New();
+    disc->SetNumberOfSides(48);
+    disc->SetRadius(std::max(load.radius, 0.1));
+    disc->SetCenter(geom.centerX + geom.normalX * offset,
+                    geom.centerY + geom.normalY * offset,
+                    geom.centerZ + geom.normalZ * offset);
+    disc->SetNormal(geom.normalX, geom.normalY, geom.normalZ);
+    disc->GeneratePolygonOn();
+
+    vtkSmartPointer<vtkAppendPolyData> append = vtkSmartPointer<vtkAppendPolyData>::New();
+    append->AddInputData(arrow);
+    append->AddInputConnection(disc->GetOutputPort());
+    append->Update();
+
+    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(append->GetOutputPort());
+
+    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->GetProperty()->SetColor(1.0, 0.0, 0.0);
+    actor->GetProperty()->SetOpacity(0.8);
+
+    return actor;
+}
+
+vtkSmartPointer<vtkPolyData> ActorFactory::createLoadArrowPolyData(
     double centerX, double centerY, double centerZ,
     double dirX, double dirY, double dirZ,
     double normalX, double normalY, double normalZ)
@@ -528,19 +694,9 @@ vtkSmartPointer<vtkActor> ActorFactory::createLoadArrowActor(
         vtkSmartPointer<vtkTransformPolyDataFilter>::New();
     transformFilter->SetInputConnection(appendFilter->GetOutputPort());
     transformFilter->SetTransform(transform);
+    transformFilter->Update();
 
-    // Create Actor
-    vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(transformFilter->GetOutputPort());
-
-    vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(mapper);
-
-    // Red color for loads
-    actor->GetProperty()->SetColor(1.0, 0.0, 0.0);
-    actor->GetProperty()->SetOpacity(0.8);
-
-    return actor;
+    return transformFilter->GetOutput();
 }
 
 vtkSmartPointer<vtkActor> ActorFactory::createBedPreviewActor(

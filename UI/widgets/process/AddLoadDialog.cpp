@@ -3,6 +3,7 @@
 #include "../../../utils/StyleManager.h"
 #include "../../visualization/VisualizationManager.h"
 #include "../../../core/processing/StepReader.h"
+#include "../properties/PlacementEditor.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -132,6 +133,14 @@ void AddLoadDialog::setupUI()
     valueLabel->setStyleSheet(labelStyle);
     formLayout->addRow(valueLabel, valueContainer);
 
+    // Position (whole face / patch) and direction
+    m_placementEditor = new PlacementEditor(this, formLayout, 150);
+    m_placementEditor->setLoad(m_currentLoad);
+    connect(m_placementEditor, &PlacementEditor::changed, this, &AddLoadDialog::onPlacementChanged);
+    connect(m_placementEditor, &PlacementEditor::directionEdited, this, &AddLoadDialog::onDirectionEdited);
+    connect(m_placementEditor, &PlacementEditor::pointModeEnabled, this, &AddLoadDialog::onPointModeEnabled);
+    connect(m_placementEditor, &PlacementEditor::normalRequested, this, &AddLoadDialog::onNormalRequested);
+
     // Reference Edge Selection
     QWidget* edgeWidget = new QWidget(this);
     QHBoxLayout* edgeLayout = new QHBoxLayout(edgeWidget);
@@ -163,18 +172,12 @@ void AddLoadDialog::setupUI()
     reverseLabel->setStyleSheet(labelStyle);
     formLayout->addRow(reverseLabel, m_reverseCheckBox);
 
-    // Direction Display
-    m_directionDisplay = new QLabel("(0.000, 0.000, -1.000)", this);
-    m_directionDisplay->setStyleSheet(labelStyle);
-
-    QLabel* dirLabel = new QLabel("Direction:", this);
-    dirLabel->setStyleSheet(labelStyle);
-    formLayout->addRow(dirLabel, m_directionDisplay);
-
     mainLayout->addLayout(formLayout);
 
     // Hint label
-    QLabel* hintLabel = new QLabel("Hint: Double-click a face to set the Surface ID and direction.\nSelect an edge to set the direction vector.", this);   hintLabel->setWordWrap(true);
+    QLabel* hintLabel = new QLabel("Hint: Double-click a face to set the Surface ID, direction and load point.\n"
+                                   "Type a direction, use the axis buttons, or select an edge to set it.", this);
+    hintLabel->setWordWrap(true);
     hintLabel->setStyleSheet(QString("color: #888888; font-size: %1px; background-color: transparent;")
         .arg(StyleManager::FONT_SIZE_SMALL));
     mainLayout->addWidget(hintLabel);
@@ -249,17 +252,25 @@ void AddLoadDialog::onFaceDoubleClicked(int faceId, double nx, double ny, double
     m_reverseCheckBox->setChecked(false);
     m_reverseCheckBox->blockSignals(oldBlock);
 
+    // Keep the user's position mode/radius, then take the clicked point
+    m_placementEditor->applyTo(m_currentLoad);
+    if (m_vizManager) {
+        double pos[3];
+        m_currentLoad.point = m_vizManager->getLastFacePickPosition(pos)
+            ? Vector3D{pos[0], pos[1], pos[2]}
+            : PlacementEditor::pointOnFaceOrCenter(m_vizManager->getCurrentStepReader().get(), faceId, m_currentLoad.point);
+        m_placementEditor->setPoint(m_currentLoad.point);
+    }
+
     // Set direction as inverse of face normal
     m_currentLoad.direction = {-nx, -ny, -nz};
     m_currentLoad.reference_edge_id = 0;
     m_selectedEdgeLabel->setText("-");
-    
+
     updateDirectionDisplay();
 
     // Show preview
-    if (m_vizManager) {
-        m_vizManager->showLoadPreview(faceId, -nx, -ny, -nz);
-    }
+    updatePreview();
 }
 
 void AddLoadDialog::onReferenceEdgeButtonClicked()
@@ -320,10 +331,7 @@ void AddLoadDialog::updateDirectionFromEdge(int edgeId)
     updateDirectionDisplay();
 
     // Update preview with new direction
-    int surfaceId = m_surfaceIdEdit->text().toInt();
-    if (m_vizManager && surfaceId > 0) {
-        m_vizManager->showLoadPreview(surfaceId, m_currentLoad.direction.x, m_currentLoad.direction.y, m_currentLoad.direction.z);
-    }
+    updatePreview();
 }
 
 void AddLoadDialog::cancelEdgeSelection()
@@ -345,6 +353,7 @@ void AddLoadDialog::cancelEdgeSelection()
 LoadCondition AddLoadDialog::getLoadCondition() const
 {
     LoadCondition load = m_currentLoad;
+    m_placementEditor->applyTo(load);
     load.name = m_nameEdit->text().toStdString();
     load.surface_id = m_surfaceIdEdit->text().toInt();
     load.magnitude = m_magnitudeEdit->text().toDouble();
@@ -361,19 +370,56 @@ void AddLoadDialog::onReverseDirectionToggled(bool checked)
     updateDirectionDisplay();
 
     // Update preview
-    int surfaceId = m_surfaceIdEdit->text().toInt();
-    if (m_vizManager && surfaceId > 0) {
-        m_vizManager->showLoadPreview(surfaceId, 
-            m_currentLoad.direction.x, 
-            m_currentLoad.direction.y, 
-            m_currentLoad.direction.z);
-    }
+    updatePreview();
 }
 
 void AddLoadDialog::updateDirectionDisplay()
 {
-    m_directionDisplay->setText(QString("(%1, %2, %3)")
-        .arg(m_currentLoad.direction.x, 0, 'f', 3)
-        .arg(m_currentLoad.direction.y, 0, 'f', 3)
-        .arg(m_currentLoad.direction.z, 0, 'f', 3));
+    m_placementEditor->setDirection(m_currentLoad.direction);
+}
+
+void AddLoadDialog::updatePreview()
+{
+    LoadCondition load = getLoadCondition();
+    if (m_vizManager && load.surface_id > 0) {
+        m_vizManager->showLoadPreview(load);
+    }
+}
+
+void AddLoadDialog::onPlacementChanged()
+{
+    m_placementEditor->applyTo(m_currentLoad);
+    updatePreview();
+}
+
+void AddLoadDialog::onDirectionEdited()
+{
+    // A typed direction is no longer tied to the reference edge or the reverse toggle
+    m_currentLoad.reference_edge_id = 0;
+    m_selectedEdgeLabel->setText("-");
+    bool oldBlock = m_reverseCheckBox->blockSignals(true);
+    m_reverseCheckBox->setChecked(false);
+    m_reverseCheckBox->blockSignals(oldBlock);
+}
+
+void AddLoadDialog::onPointModeEnabled()
+{
+    // If no point on this face has been picked yet, start from the face center
+    if (!m_vizManager) return;
+    LoadCondition load = getLoadCondition();
+    m_placementEditor->setPoint(PlacementEditor::pointOnFaceOrCenter(
+        m_vizManager->getCurrentStepReader().get(), load.surface_id, load.point));
+}
+
+void AddLoadDialog::onNormalRequested()
+{
+    if (!m_vizManager) return;
+    Vector3D normal;
+    if (!PlacementEditor::inwardNormal(m_vizManager->getCurrentStepReader().get(), getLoadCondition(), normal)) {
+        return;
+    }
+    m_currentLoad.direction = normal;
+    updateDirectionDisplay();
+    onDirectionEdited();
+    onPlacementChanged();
 }

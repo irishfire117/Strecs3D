@@ -22,6 +22,8 @@
 #include <GProp_GProps.hxx>
 #include <BRepGProp.hxx>
 #include <GeomLProp_SLProps.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <Geom_Surface.hxx>
 
 // VTK includes
 #include <vtkSmartPointer.h>
@@ -429,6 +431,56 @@ FaceGeometry StepReader::getFaceGeometry(int surfaceId) const {
 
     return result;
 }
+
+FaceGeometry StepReader::getFaceGeometryAtPoint(int surfaceId, double x, double y, double z) const {
+    FaceGeometry result;
+    result.isValid = false;
+
+    int targetIndex = surfaceId - 1;
+    if (!isValid_ || targetIndex < 0) {
+        return result;
+    }
+
+    int currentIndex = 0;
+    for (TopExp_Explorer faceExp(*shape_, TopAbs_FACE); faceExp.More(); faceExp.Next()) {
+        if (currentIndex == targetIndex) {
+            TopoDS_Face face = TopoDS::Face(faceExp.Current());
+            Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+            if (surface.IsNull()) {
+                return result;
+            }
+
+            GeomAPI_ProjectPointOnSurf projector(gp_Pnt(x, y, z), surface);
+            if (projector.NbPoints() == 0) {
+                return result;
+            }
+
+            double u, v;
+            projector.LowerDistanceParameters(u, v);
+            gp_Pnt projected = projector.NearestPoint();
+            result.centerX = projected.X();
+            result.centerY = projected.Y();
+            result.centerZ = projected.Z();
+
+            GeomLProp_SLProps slProps(surface, u, v, 1, 1e-6);
+            if (slProps.IsNormalDefined()) {
+                gp_Dir normal = slProps.Normal();
+                if (face.Orientation() == TopAbs_REVERSED) {
+                    normal.Reverse();
+                }
+                result.normalX = normal.X();
+                result.normalY = normal.Y();
+                result.normalZ = normal.Z();
+                result.isValid = true;
+            }
+            return result;
+        }
+        currentIndex++;
+    }
+
+    return result;
+}
+
 std::vector<vtkSmartPointer<vtkActor>> StepReader::getEdgeActors() const
 {
     std::vector<vtkSmartPointer<vtkActor>> edgeActors;
@@ -499,6 +551,40 @@ std::vector<vtkSmartPointer<vtkActor>> StepReader::getEdgeActors() const
     }
 
     return edgeActors;
+}
+
+std::vector<std::array<double, 3>> StepReader::getEdgeSamplePoints(int edgeId, int count) const {
+    std::vector<std::array<double, 3>> points;
+    if (!isValid_ || edgeId < 1 || count < 2) {
+        return points;
+    }
+
+    TopTools_IndexedMapOfShape edgeMap;
+    TopExp::MapShapes(*shape_, TopAbs_EDGE, edgeMap);
+    if (edgeId > edgeMap.Extent()) {
+        return points;
+    }
+
+    TopoDS_Edge edge = TopoDS::Edge(edgeMap(edgeId));
+    if (BRep_Tool::Degenerated(edge)) {
+        return points;
+    }
+
+    BRepAdaptor_Curve curve(edge);
+    double first = curve.FirstParameter();
+    double last = curve.LastParameter();
+    for (int i = 0; i < count; ++i) {
+        gp_Pnt p = curve.Value(first + (last - first) * i / (count - 1));
+        points.push_back({p.X(), p.Y(), p.Z()});
+    }
+    return points;
+}
+
+int StepReader::getEdgeCount() const {
+    if (!isValid_) return 0;
+    TopTools_IndexedMapOfShape edgeMap;
+    TopExp::MapShapes(*shape_, TopAbs_EDGE, edgeMap);
+    return edgeMap.Extent();
 }
 
 EdgeGeometry StepReader::getEdgeGeometry(int edgeId) const {

@@ -133,6 +133,9 @@ void PropertyWidget::setVisualizationManager(VisualizationManager* vizManager)
     if (m_loadWidget) {
         m_loadWidget->setVisualizationManager(vizManager);
     }
+    if (m_constraintWidget) {
+        m_constraintWidget->setVisualizationManager(vizManager);
+    }
 }
 
 void PropertyWidget::setVolumeFractions(const std::vector<double>& fractions)

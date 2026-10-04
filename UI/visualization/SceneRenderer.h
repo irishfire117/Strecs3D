@@ -22,6 +22,9 @@ public:
     explicit SceneRenderer(MainWindowUI* ui);
     ~SceneRenderer();
 
+    // World position of the most recent face double-click
+    bool getLastFacePickPosition(double pos[3]) const;
+
     // --- Rendering Operations ---
     void renderObjects(const std::vector<ObjectInfo>& objectList);
     void render();

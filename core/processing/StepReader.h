@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
 #include <vtkPolyData.h>
@@ -48,8 +49,17 @@ public:
     // 面の中心と法線を取得（surface_idは1-based）
     FaceGeometry getFaceGeometry(int surfaceId) const;
 
+    // 指定点を面に投影した点と、その点での法線を取得（center に投影点が入る）
+    FaceGeometry getFaceGeometryAtPoint(int surfaceId, double x, double y, double z) const;
+
     // エッジのジオメトリを取得（edgeIdは1-based）
     EdgeGeometry getEdgeGeometry(int edgeId) const;
+
+    // エッジ上の等間隔（パラメータ）サンプル点を取得（閉じたエッジも可、edgeIdは1-based）
+    std::vector<std::array<double, 3>> getEdgeSamplePoints(int edgeId, int count) const;
+
+    // エッジの総数
+    int getEdgeCount() const;
 
 private:
     TopoDS_Shape* shape_;

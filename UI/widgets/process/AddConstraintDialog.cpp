@@ -2,6 +2,7 @@
 #include "../../../utils/ColorManager.h"
 #include "../../../utils/StyleManager.h"
 #include "../../visualization/VisualizationManager.h"
+#include "../properties/PlacementEditor.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -19,6 +20,9 @@ AddConstraintDialog::AddConstraintDialog(const QString& defaultName, QWidget* pa
 
 AddConstraintDialog::~AddConstraintDialog()
 {
+    if (m_isSelectingEdge) {
+        setEdgeSelecting(false);
+    }
     // Clear preview when dialog is closed
     if (m_vizManager) {
         m_vizManager->clearPreview();
@@ -31,6 +35,7 @@ void AddConstraintDialog::setVisualizationManager(VisualizationManager* vizManag
     // Disconnect previous connections if any
     if (m_vizManager) {
         disconnect(m_vizManager, &VisualizationManager::faceDoubleClicked, this, nullptr);
+        disconnect(m_vizManager, &VisualizationManager::edgeClicked, this, nullptr);
     }
 
     m_vizManager = vizManager;
@@ -39,6 +44,8 @@ void AddConstraintDialog::setVisualizationManager(VisualizationManager* vizManag
     if (m_vizManager) {
         connect(m_vizManager, &VisualizationManager::faceDoubleClicked,
                 this, &AddConstraintDialog::onFaceDoubleClicked);
+        connect(m_vizManager, &VisualizationManager::edgeClicked,
+                this, &AddConstraintDialog::onEdgeSelected);
         enableFaceSelectionMode(true);
     }
 }
@@ -82,10 +89,23 @@ void AddConstraintDialog::setupUI()
     surfaceLabel->setStyleSheet(labelStyle);
     formLayout->addRow(surfaceLabel, m_surfaceIdEdit);
 
+    // Where the constraint applies: whole face, patch at a point, or an edge
+    PlacementEditor::Options options;
+    options.direction = false;
+    options.edge = true;
+    m_placementEditor = new PlacementEditor(this, formLayout, 150, options);
+    connect(m_placementEditor, &PlacementEditor::changed, this, &AddConstraintDialog::updatePreview);
+    connect(m_placementEditor, &PlacementEditor::pointModeEnabled, this, &AddConstraintDialog::onPointModeEnabled);
+    connect(m_placementEditor, &PlacementEditor::edgeSelectionRequested, this, [this]() {
+        setEdgeSelecting(!m_isSelectingEdge);
+    });
+
     mainLayout->addLayout(formLayout);
 
     // Hint label
-    QLabel* hintLabel = new QLabel("Hint: Double-click a face to set the Surface ID.", this);
+    QLabel* hintLabel = new QLabel("Hint: Double-click a face to set the Surface ID and point.\n"
+                                   "For Edge, click Select Edge and then click an edge.\n"
+                                   "A single point or straight edge alone lets the part rotate; combine it with another constraint.", this);
     hintLabel->setWordWrap(true);
     hintLabel->setStyleSheet(QString("color: #888888; font-size: %1px; background-color: transparent;")
         .arg(StyleManager::FONT_SIZE_SMALL));
@@ -160,10 +180,52 @@ void AddConstraintDialog::onFaceDoubleClicked(int faceId, double nx, double ny, 
 
     m_surfaceIdEdit->setText(QString::number(faceId));
 
-    // Show preview
+    // Clicked point becomes the constraint point (used for "At point")
     if (m_vizManager) {
-        m_vizManager->showConstraintPreview(faceId);
+        double pos[3];
+        ConstraintCondition current = getConstraintCondition();
+        m_placementEditor->setPoint(m_vizManager->getLastFacePickPosition(pos)
+            ? Vector3D{pos[0], pos[1], pos[2]}
+            : PlacementEditor::pointOnFaceOrCenter(m_vizManager->getCurrentStepReader().get(), faceId, current.point));
     }
+
+    // Show preview
+    updatePreview();
+}
+
+void AddConstraintDialog::onEdgeSelected(int edgeId)
+{
+    if (!m_isSelectingEdge) return;
+    m_placementEditor->setEdge(edgeId);
+    setEdgeSelecting(false);
+    updatePreview();
+}
+
+void AddConstraintDialog::setEdgeSelecting(bool selecting)
+{
+    m_isSelectingEdge = selecting;
+    m_placementEditor->setEdgeSelecting(selecting);
+    if (m_vizManager) {
+        m_vizManager->setFaceSelectionMode(!selecting);
+        m_vizManager->setEdgeSelectionMode(selecting);
+    }
+}
+
+void AddConstraintDialog::updatePreview()
+{
+    ConstraintCondition constraint = getConstraintCondition();
+    if (m_vizManager && constraint.hasTarget()) {
+        m_vizManager->showConstraintPreview(constraint);
+    }
+}
+
+void AddConstraintDialog::onPointModeEnabled()
+{
+    // If no point on this face has been picked yet, start from the face center
+    if (!m_vizManager) return;
+    ConstraintCondition constraint = getConstraintCondition();
+    m_placementEditor->setPoint(PlacementEditor::pointOnFaceOrCenter(
+        m_vizManager->getCurrentStepReader().get(), constraint.surface_id, constraint.point));
 }
 
 ConstraintCondition AddConstraintDialog::getConstraintCondition() const
@@ -171,5 +233,10 @@ ConstraintCondition AddConstraintDialog::getConstraintCondition() const
     ConstraintCondition constraint;
     constraint.name = m_nameEdit->text().toStdString();
     constraint.surface_id = m_surfaceIdEdit->text().toInt();
+    m_placementEditor->applyTo(constraint);
+    if (constraint.target == ConstraintTarget::Edge && m_vizManager) {
+        constraint.edge_points = PlacementEditor::edgeSamplePoints(
+            m_vizManager->getCurrentStepReader().get(), constraint.edge_id);
+    }
     return constraint;
 }

@@ -1,5 +1,6 @@
 #include "ApplicationController.h"
 #include <gp_Vec.hxx>
+#include <gp_Pnt.hxx>
 #include "MainWindowUIAdapter.h"
 #include "../../UI/mainwindowui.h"
 #include "../../utils/fileUtility.h"
@@ -603,12 +604,26 @@ void ApplicationController::transformBoundaryConditions(const gp_Trsf& transform
         load.direction.x = direction.X();
         load.direction.y = direction.Y();
         load.direction.z = direction.Z();
+
+        // 荷重点は座標なので移動成分も含めて変換
+        gp_Pnt point(load.point.x, load.point.y, load.point.z);
+        point.Transform(transform);
+        load.point = {point.X(), point.Y(), point.Z()};
         bcChanged = true;
     }
 
-    // 必要に応じてConstraintも変換（現在はSurface ID依存なので、Surface IDが変わらなければ特に変更不要だが、
-    // もし座標依存のデータが含まれる場合はここで変換する）
-    // 現状のConstraintConditionは surface_id と name のみなので変換不要
+    // Constraint の点・エッジのサンプル点も座標なので移動成分も含めて変換
+    for (auto& constraint : bc.constraints) {
+        gp_Pnt point(constraint.point.x, constraint.point.y, constraint.point.z);
+        point.Transform(transform);
+        constraint.point = {point.X(), point.Y(), point.Z()};
+        for (auto& p : constraint.edge_points) {
+            gp_Pnt edgePoint(p.x, p.y, p.z);
+            edgePoint.Transform(transform);
+            p = {edgePoint.X(), edgePoint.Y(), edgePoint.Z()};
+        }
+        bcChanged = true;
+    }
 
     if (bcChanged) {
         uiState->setBoundaryCondition(bc);

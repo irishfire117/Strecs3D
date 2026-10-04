@@ -27,6 +27,35 @@ void MeshGenerator::setMeshOrder(int order) {
     mesh_order_ = order;
 }
 
+void MeshGenerator::addRefinementPoint(double x, double y, double z, double radius) {
+    refinement_points_.push_back({x, y, z, radius});
+}
+
+void MeshGenerator::applyRefinementFields() const {
+    if (refinement_points_.empty()) return;
+
+    // 荷重パッチ周辺を細かくする: パッチ内に複数要素が入るよう半径の1/3程度のサイズに
+    std::vector<double> ball_fields;
+    for (const auto& p : refinement_points_) {
+        double size = std::clamp(p.radius / 3.0, char_length_min_, char_length_max_);
+        int field = gmsh::model::mesh::field::add("Ball");
+        gmsh::model::mesh::field::setNumber(field, "XCenter", p.x);
+        gmsh::model::mesh::field::setNumber(field, "YCenter", p.y);
+        gmsh::model::mesh::field::setNumber(field, "ZCenter", p.z);
+        gmsh::model::mesh::field::setNumber(field, "Radius", p.radius * 1.5);
+        gmsh::model::mesh::field::setNumber(field, "Thickness", std::max(p.radius, size));
+        gmsh::model::mesh::field::setNumber(field, "VIn", size);
+        gmsh::model::mesh::field::setNumber(field, "VOut", char_length_max_);
+        ball_fields.push_back(field);
+        std::cout << "荷重点周辺のメッシュを細分化: (" << p.x << ", " << p.y << ", " << p.z
+                  << ") 半径 " << p.radius << " サイズ " << size << std::endl;
+    }
+
+    int min_field = gmsh::model::mesh::field::add("Min");
+    gmsh::model::mesh::field::setNumbers(min_field, "FieldsList", ball_fields);
+    gmsh::model::mesh::field::setAsBackgroundMesh(min_field);
+}
+
 int MeshGenerator::generateMesh(const std::string& step_file) {
     try {
         std::cout << "STEPファイルを読み込み中: " << step_file << std::endl;
@@ -54,6 +83,7 @@ int MeshGenerator::generateMesh(const std::string& step_file) {
         gmsh::option::setNumber("Mesh.CharacteristicLengthMin", char_length_min_);
         gmsh::option::setNumber("Mesh.CharacteristicLengthMax", char_length_max_);
         gmsh::option::setNumber("Mesh.HighOrderOptimize", 2);
+        applyRefinementFields();
 
         // Generate 3D mesh
         std::cout << "3Dメッシュを生成中..." << std::endl;

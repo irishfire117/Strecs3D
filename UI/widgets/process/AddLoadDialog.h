@@ -9,6 +9,7 @@
 
 class VisualizationManager;
 class StepReader;
+class PlacementEditor;
 
 class AddLoadDialog : public QDialog {
     Q_OBJECT
@@ -32,6 +33,11 @@ private:
     void cancelEdgeSelection();
     void updateDirectionFromEdge(int edgeId);
     void updateDirectionDisplay();
+    void updatePreview();
+    void onPlacementChanged();
+    void onDirectionEdited();
+    void onPointModeEnabled();
+    void onNormalRequested();
 
     QLineEdit* m_nameEdit;
     QLineEdit* m_surfaceIdEdit;
@@ -41,7 +47,7 @@ private:
     QPushButton* m_referenceEdgeButton;
     QCheckBox* m_reverseCheckBox;
     QLabel* m_selectedEdgeLabel;
-    QLabel* m_directionDisplay;
+    PlacementEditor* m_placementEditor;
 
     QPushButton* m_okButton;
     QPushButton* m_cancelButton;

@@ -23,12 +23,22 @@ public:
     void setMeshAlgorithm(int algorithm);
     void setMeshOrder(int order);
 
+    // Refine the mesh within radius of a point (used for patch loads)
+    void addRefinementPoint(double x, double y, double z, double radius);
+
 private:
     std::vector<int> surface_tags_;
     double char_length_min_;
     double char_length_max_;
     int mesh_algorithm_;
     int mesh_order_;
+
+    struct RefinementPoint {
+        double x, y, z, radius;
+    };
+    std::vector<RefinementPoint> refinement_points_;
+
+    void applyRefinementFields() const;
 };
 
 #endif // MESH_GENERATOR_H
