@@ -13,6 +13,8 @@
 #include "../../FEM/fem_pipeline.h"
 #include "../../FEM/FEMProgressCallback.h"
 #include <QApplication>
+#include <QThread>
+#include <QMetaObject>
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
@@ -417,14 +419,31 @@ QString ApplicationController::runSimulation(IUserInterface* ui, const QString& 
         ui->setSimulationProgress(0, "Starting simulation...");
 
         // 進捗コールバック作成
+        // The FEM pipeline calls these from worker threads too (e.g. CalculiX output),
+        // so UI updates from other threads are queued to the GUI thread.
+        auto onGuiThread = [] { return QThread::currentThread() == qApp->thread(); };
         SimpleFEMProgressCallback progressCallback(
-            [ui](int progress, const std::string& message) {
-                ui->setSimulationProgress(progress, QString::fromStdString(message));
-                QApplication::processEvents();  // UI応答性維持
+            [ui, onGuiThread](int progress, const std::string& message) {
+                QString msg = QString::fromStdString(message);
+                if (onGuiThread()) {
+                    ui->setSimulationProgress(progress, msg);
+                    QApplication::processEvents();  // UI応答性維持
+                } else {
+                    QMetaObject::invokeMethod(qApp, [ui, progress, msg] {
+                        ui->setSimulationProgress(progress, msg);
+                    }, Qt::QueuedConnection);
+                }
             },
-            [ui](const std::string& message) {
-                ui->appendSimulationLog(QString::fromStdString(message));
-                QApplication::processEvents();
+            [ui, onGuiThread](const std::string& message) {
+                QString msg = QString::fromStdString(message);
+                if (onGuiThread()) {
+                    ui->appendSimulationLog(msg);
+                    QApplication::processEvents();
+                } else {
+                    QMetaObject::invokeMethod(qApp, [ui, msg] {
+                        ui->appendSimulationLog(msg);
+                    }, Qt::QueuedConnection);
+                }
             }
         );
 
