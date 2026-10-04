@@ -11,6 +11,10 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     app.setWindowIcon(QIcon(":/resources/strecs_icon.png"));
+#ifdef Q_OS_LINUX
+    // Lets Wayland compositors match the window to strecs3d.desktop (taskbar icon/name)
+    QGuiApplication::setDesktopFileName("strecs3d");
+#endif
 
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
 

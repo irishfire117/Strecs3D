@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Strecs3D
+GenericName=Stress-based Infill Generator
+Comment=Generate 3D-printing infill that is dense where a part is stressed and sparse elsewhere
+Exec=@STRECS3D_BINARY@
+Icon=strecs3d
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+Keywords=3D printing;infill;FEM;stress;slicer;
+StartupWMClass=Strecs3D

@@ -70,6 +70,24 @@ function(apply_linux_settings TARGET_NAME)
 
   target_sources(${TARGET_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/UI/platform/linux/WindowUtils.cpp")
 
+  # `cmake --install build [--prefix ~/.local]`: binary, desktop entry and icons
+  include(GNUInstallDirs)
+  install(TARGETS ${TARGET_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+  # Exec= is filled in at install time so it follows --prefix
+  set(_desktop_in "${CMAKE_SOURCE_DIR}/packaging/linux/strecs3d.desktop.in")
+  set(_desktop_out "${CMAKE_BINARY_DIR}/strecs3d.desktop")
+  install(CODE "
+    set(STRECS3D_BINARY \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/${TARGET_NAME}\")
+    configure_file(\"${_desktop_in}\" \"${_desktop_out}\" @ONLY)
+  ")
+  install(FILES "${_desktop_out}" DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+
+  foreach(_size 48 128 256 512)
+    install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/icons/hicolor/${_size}x${_size}/apps/strecs3d.png"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_size}x${_size}/apps)
+  endforeach()
+
   # Arch's VTK uses the oneTBB SMP backend, whose headers declare functions named
   # emit() that clash with Qt's emit macro. Pre-include them before any Qt header.
   if(EXISTS "/usr/include/oneapi/tbb/profiling.h")
