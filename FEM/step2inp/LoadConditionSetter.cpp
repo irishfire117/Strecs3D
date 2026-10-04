@@ -22,6 +22,15 @@ void LoadConditionSetter::addLoad(int surface_number, double magnitude, const st
 double LoadConditionSetter::calculateElementArea(const std::vector<std::vector<double>>& coords) {
     int n_nodes = coords.size();
 
+    // 二次要素 (6節点三角形 / 8,9節点四角形) は頂点節点のみで面積を計算
+    // （中間節点を含めて扇形分割すると面積が誤る）
+    if (n_nodes == 6) {
+        return calculateElementArea({coords[0], coords[1], coords[2]});
+    }
+    if (n_nodes == 8 || n_nodes == 9) {
+        return calculateElementArea({coords[0], coords[1], coords[2], coords[3]});
+    }
+
     if (n_nodes == 3) {
         // 三角形要素: 2つの辺ベクトルの外積の大きさの半分
         std::vector<double> v1 = {coords[1][0] - coords[0][0], coords[1][1] - coords[0][1], coords[1][2] - coords[0][2]};
