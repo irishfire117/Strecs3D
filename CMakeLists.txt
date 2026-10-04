@@ -34,8 +34,10 @@ if(WIN32)
   include(cmake/windows_settings.cmake)
 elseif(APPLE)
   include(cmake/macos_settings.cmake)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  include(cmake/linux_settings.cmake)
 else()
-  message(FATAL_ERROR "Unsupported operating system. Only Windows and macOS are supported.")
+  message(FATAL_ERROR "Unsupported operating system. Only Windows, macOS and Linux are supported.")
 endif()
 
 # 共通設定をインクルード

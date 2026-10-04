@@ -209,6 +209,8 @@ if(WIN32)
   apply_windows_settings(Strecs3D)
 elseif(APPLE)
   apply_macos_settings(Strecs3D)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  apply_linux_settings(Strecs3D)
 endif()
 
 # VTK 自動初期化設定 (VTK バージョンが 8.90.0 以上の場合)
